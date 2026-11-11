@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "control": "CT-01",
+      "resource": "Preencher: ambiente/cluster ou baseline abrangida",
+      "reference": "Preencher: URL interna do Confluence ou registro de aprovação",
+      "description": "MODELO: guia de hardening revisado; substituir por evidência real, versão e escopo",
+      "collected_at": "Preencher: data e hora UTC da evidência",
+      "owner": "Preencher: responsável pela evidência"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Evidências reais e resultados locais
+saidas/
+outputs/
+evidence/
+evidencias/
+**/saidas/
+**/outputs/
+**/evidence/
+**/evidencias/
+.env
+.env.*
+!.env.example
+.aws/
+.kube/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+__pycache__/
+*.py[cod]
+.DS_Store
+*.log
+*.zip
+evidencias-externas.json

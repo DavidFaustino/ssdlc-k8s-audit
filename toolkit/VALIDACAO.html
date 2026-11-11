@@ -1,0 +1,44 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Validação e limites do kit</title><style>body{margin:0;background:#f3f5f8;color:#172b4d;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+main{max-width:1120px;margin:32px auto;background:white;padding:40px;border-radius:12px;box-shadow:0 2px 10px #172b4d12}
+h1{font-size:30px;line-height:1.2;color:#102a43}h2{font-size:23px;margin-top:38px;border-top:2px solid #dbe5ef;padding-top:20px}h3{font-size:19px;margin-top:26px}
+p,li{max-width:100%}a{color:#0052cc}code{font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf2f7;padding:2px 4px;border-radius:3px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102a43;color:#eef5fc;border-radius:7px;padding:18px}pre code{background:none;color:inherit;padding:0}
+.table-wrap{overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;background:#e8f0fb;color:#102a43}th,td{border:1px solid #d9e2ec;padding:10px 12px;vertical-align:top;min-width:100px}tr:nth-child(even){background:#f8fafc}
+blockquote{border-left:4px solid #0052cc;padding:10px 18px;background:#eef5ff;margin:20px 0}footer{font-size:12px;color:#526777;margin-top:36px}
+@media(max-width:700px){main{margin:0;padding:18px;border-radius:0}h1{font-size:25px}th,td{padding:7px}}
+@media print{body{background:white}main{box-shadow:none;margin:0;padding:0;max-width:none}h2,h3{break-after:avoid}tr{break-inside:avoid}a{color:inherit}}
+</style></head><body><main><h1>Validação e limites do kit</h1>
+<p><strong>Versão:</strong> 0.1.0-20261110. <strong>Ambiente de desenvolvimento:</strong> macOS, Python 3.14.7. <strong>Validação corporativa:</strong> não realizada nesta entrega.</p>
+<h2>O que foi exercitado</h2>
+<ul>
+<li>Allowlist de leitura bloqueia comando de mutação antes de iniciar processo.</li>
+<li>Falha de autenticação/permissão, timeout, CLI ausente, JSON inválido e token de paginação não resultam em inventário vazio considerado completo.</li>
+<li>Diretórios novos e evidências escritas a cada consulta preservam coletas anteriores.</li>
+<li>Sanitização remove campos de segredo das fixtures: environment, comandos, anotações, HTTP headers, parâmetros arbitrários de storage e docker labels.</li>
+<li>Hash/metadados e coerência de status/fonte/operação são conferidos antes da análise.</li>
+<li>Limite de detalhamento aparece como parcial, com contagem de omitidos.</li>
+<li>EKS access/nodegroups, ECS task definition e Lambda URLs/policies de aliases foram exercitados com respostas controladas.</li>
+<li>Relatório cobre os 21 requisitos, mantém pendências de eficácia, gera ações por recurso e escapa conteúdo HTML/CSV.</li>
+<li>Fluxo real dos CLIs Python foi executado com executáveis AWS/kubectl locais simulados, sem rede e sem credenciais. Os mesmos arquivos de coleta são consumidos pelo gerador real de relatório.</li>
+<li>Pacote portátil exclui pastas de saída e detecta arquivo alterado após extração.</li>
+<li>Os nomes de 92 operações da allowlist e os nomes/parâmetros obrigatórios de 86 chamadas exercitadas foram conferidos contra os modelos públicos do botocore 1.44.0, sem chamadas à AWS. Isso não substitui execução real nem valida as permissões IAM efetivas.</li>
+</ul>
+<h2>Como repetir</h2>
+<p>Na raiz extraída:</p>
+<pre><code>python3 -m unittest discover -s tests -v</code></pre>
+<p>Windows: <code>py -3 -m unittest discover -s tests -v</code>. Dois testes de integração usam shebang POSIX e são ignorados no Windows; os testes de biblioteca permanecem disponíveis. Não houve execução nativa Windows nesta entrega. A versão mínima de Python especificada é 3.10; os testes locais foram executados na versão indicada acima, não em toda a matriz de versões.</p>
+<p>O teste <code>test_clean_copy_all_modules_and_report</code> cria CLIs simuladas que devolvem exemplos sintéticos, roda os dois coletores e o relatório, confere os 21 controles e verifica que um segredo sintético não aparece nas saídas. Isso valida a integração local do software, <strong>não a compatibilidade real de todas as APIs/permissões no seu ambiente</strong>.</p>
+<h2>Revisão independente</h2>
+<p>Uma revisão de código independente executou a suíte inicial e encontrou: superfícies adicionais de campos sensíveis, omissão das URLs/policies de aliases Lambda e aceitação de metadados incoerentes. Esses casos receberam regressões, falharam antes das correções e passaram depois. Também foi corrigida a interpretação do default de readonlyRootFilesystem em ECS Linux, preservando tratamento específico Windows.</p>
+<p>A revisão documental identificou a consulta de replicação ECR com nome inválido; foi substituída por <code>ecr describe-registry</code> e a política de exemplo agora usa <code>ecr:DescribeRegistry</code>. O cenário recebeu teste de regressão. Demais documentos foram confrontados com as CLIs, seus limites e as referências locais. A colagem real no editor Confluence não foi testada.</p>
+<h2>O que precisa ser conferido no trabalho</h2>
+<ol>
+<li>Sessão, role/conta, regiões e autorização de leitura; restrições de SCP, boundaries e RBAC.</li>
+<li>Versões reais do AWS CLI/kubectl, serviços habilitados, APIs suportadas e conectividade/VPN.</li>
+<li>Relação entre contexto K8s e cluster/conta/região; o vínculo informado pelo operador não é validado automaticamente.</li>
+<li>Escopo e atualidade dos dados: workloads/versões em execução, detalhamento omitido, amostras e fontes externas.</li>
+<li>Aplicabilidade e aprovação da baseline, benchmark/perfil, retenção, SLA, risco e exceções.</li>
+<li>Evidências de eficácia: recebimento de logs, cobertura/saúde antimalware/FIM, gates, verificação de assinatura, teste de restauração e revisão de acessos.</li>
+</ol>
+<p>Um coletor pode retornar <code>2</code> porque um recurso opcional não existe, falta permissão ou uma operação foi amostrada. Não converter automaticamente esse código em desvio do ambiente. O relatório lista os motivos para julgamento do operador.</p>
+<p>As referências oficiais consultadas estão no guia de hardening e no escopo. O pacote não foi publicado no GitHub nem no Confluence; o operador decide seu destino corporativo.</p></main></body></html>

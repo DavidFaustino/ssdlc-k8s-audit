@@ -1,0 +1,178 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Runbook — preparar e conferir as evidências da auditoria AWS</title><style>body{margin:0;background:#f3f5f8;color:#172b4d;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+main{max-width:1120px;margin:32px auto;background:white;padding:40px;border-radius:12px;box-shadow:0 2px 10px #172b4d12}
+h1{font-size:30px;line-height:1.2;color:#102a43}h2{font-size:23px;margin-top:38px;border-top:2px solid #dbe5ef;padding-top:20px}h3{font-size:19px;margin-top:26px}
+p,li{max-width:100%}a{color:#0052cc}code{font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf2f7;padding:2px 4px;border-radius:3px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102a43;color:#eef5fc;border-radius:7px;padding:18px}pre code{background:none;color:inherit;padding:0}
+.table-wrap{overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;background:#e8f0fb;color:#102a43}th,td{border:1px solid #d9e2ec;padding:10px 12px;vertical-align:top;min-width:100px}tr:nth-child(even){background:#f8fafc}
+blockquote{border-left:4px solid #0052cc;padding:10px 18px;background:#eef5ff;margin:20px 0}footer{font-size:12px;color:#526777;margin-top:36px}
+@media(max-width:700px){main{margin:0;padding:18px;border-radius:0}h1{font-size:25px}th,td{padding:7px}}
+@media print{body{background:white}main{box-shadow:none;margin:0;padding:0;max-width:none}h2,h3{break-after:avoid}tr{break-inside:avoid}a{color:inherit}}
+</style></head><body><main><h1>Runbook — preparar e conferir as evidências da auditoria AWS</h1>
+<p><strong>Público:</strong> engenheiro que precisa executar a coleta, compreender o que foi observado e demonstrar evidências ao auditor. <strong>Data de preparação:</strong> 10/11/2026. <strong>Auditoria informada:</strong> 11/11/2026.</p>
+<h2>1. Resultado que você vai obter</h2>
+<p>Ao terminar, haverá pastas separadas de coleta AWS, coleta Kubernetes e relatório. Cada consulta terá um JSON sanitizado, data UTC, origem, recurso, conta/região e SHA-256. O relatório relacionará esses arquivos aos requisitos e produzirá um plano de ação editável.</p>
+<p>Os scripts não alteram configuração, não disparam deploy, não invocam Lambda, não executam comandos em pods/hosts e não usam SSM Run Command. A autenticação acontece antes, pela sessão corporativa que você já utiliza.</p>
+<p>O fluxo é:</p>
+<pre><code>Lista do auditor + contas/regiões/contextos autorizados
+  → collect_aws.py: identifica conta, consulta serviços, sanitiza, guarda evidências
+  → collect_kubernetes.py: consulta contexto explícito, sanitiza, guarda evidências
+  → build_report.py: confere hashes/metadados e avalia campos observáveis
+  → RELATORIO + CONTROLES + OBSERVACOES + INVENTARIO + PLANO-ACAO
+  → operador complementa processo/console/host e revisa a resposta da auditoria</code></pre>
+<p>As duas coletas são independentes. Você pode gerar o relatório apenas com AWS, apenas com Kubernetes ou com ambas. Requisitos sem evidência permanecem pendentes. Os scripts não reconhecem automaticamente que um contexto K8s corresponde a uma conta AWS; essa ligação é declarada e deve ser conferida pelo operador.</p>
+<h2>2. Antes de executar: escopo e acesso</h2>
+<p>Registre em uma nota interna: contas, regiões, clusters, namespaces, ambiente, owner, escopo da auditoria, janela temporal da evidência e o benchmark/política aprovados. Não existe no kit uma conta, região, retenção ou SLA corporativo presumido.</p>
+<p>Você precisa de Python <strong>3.10 ou superior</strong>, AWS CLI <strong>v2</strong> e, para coletar Kubernetes, <code>kubectl</code> compatível com seus clusters. Não há pacote pip a instalar. Use distribuição e procedimento de instalação aprovados pela empresa.</p>
+<pre><code>python3 --version
+aws --version
+kubectl version --client</code></pre>
+<p>No PowerShell:</p>
+<pre><code>py -3 --version
+aws --version
+kubectl version --client</code></pre>
+<p>Se faltar Python/AWS CLI, pare e instale pelo canal corporativo. Sem kubectl, você ainda consegue coletar AWS e registrar a lacuna de K8s.</p>
+<p>Consulte <a href="PERMISSOES.html">PERMISSOES.md</a>. Ter permissão AWS para descrever EKS não concede acesso à API Kubernetes. O coletor não concede permissões e não contorna acessos negados.</p>
+<h2>3. Autenticar e conferir a conta</h2>
+<p>Use o perfil de leitura aprovado. Se sua empresa usa IAM Identity Center, autentique com o procedimento já configurado:</p>
+<pre><code>aws sso login --profile corporativo-readonly
+aws sts get-caller-identity --profile corporativo-readonly --region sa-east-1</code></pre>
+<p>Confira <code>Account</code> e <code>Arn</code>. <strong>Os valores <code>corporativo-readonly</code>, <code>sa-east-1</code> e <code>111122223333</code> usados neste runbook são exemplos.</strong> Substitua pelos autorizados. Se a conta ou role não for a esperada, pare antes de coletar.</p>
+<p>Para uma sessão temporária já fornecida pelo ambiente, utilize <code>--ambient-session</code> no coletor, em vez de <code>--profiles</code>. O kit não lê seus arquivos de credenciais para exportação e não solicita chaves no código.</p>
+<h2>4. Coletar AWS</h2>
+<p>Abra o terminal na pasta extraída do kit. Execute em uma linha; o mesmo formato funciona no PowerShell trocando <code>python3</code> por <code>py -3</code>:</p>
+<pre><code>python3 collect_aws.py --profiles corporativo-readonly --regions sa-east-1 --expected-accounts 111122223333 --out saidas/aws-20261110-01</code></pre>
+<p>Para várias regiões/perfis, informe todos explicitamente:</p>
+<pre><code>python3 collect_aws.py --profiles conta-pci-readonly conta-servicos-readonly --regions sa-east-1 us-east-1 --expected-accounts 111122223333 444455556666 --out saidas/aws-20261110-02</code></pre>
+<p>O conjunto de contas esperado é uma allowlist, não um vínculo individual perfil→conta. Confira os <code>sts.get-caller-identity</code> no manifesto. Uma conta fora da lista gera <code>UnexpectedAccount</code> e não recebe consultas de inventário.</p>
+<h3>O que acontece dentro deste script</h3>
+<ol>
+<li>Cria a pasta de saída; recusa reaproveitar uma pasta existente para preservar coletas anteriores.</li>
+<li>Executa STS uma vez por perfil; sem identidade válida, registra falha e não consulta os serviços daquele perfil.</li>
+<li>Executa os módulos selecionados em cada região. IAM é global e é consultado só na primeira região de cada perfil.</li>
+<li>AWS CLI usa paginação automática. Falhas, tokens de continuidade e limites de detalhes ficam no manifesto.</li>
+<li>Sanitiza as respostas antes de gravar: remove environment values, comandos/args, user data, tags, descrições e outros campos arbitrários. Preserva referências necessárias sem ler Secrets Manager GetSecretValue nem Kubernetes Secrets. Algumas APIs de configuração retornam campos sensíveis em memória ao CLI; eles são excluídos das saídas.</li>
+<li>Grava evidência e atualiza o manifesto a cada consulta. Não depende de terminar tudo para preservar o que já foi coletado.</li>
+</ol>
+<h3>Módulos e limites</h3>
+<div class="table-wrap"><table><thead><tr><th>Módulo</th><th>Entrada real</th><th>Processamento</th><th>Evidência produzida / limite</th></tr></thead><tbody>
+<tr><td><code>eks</code></td><td>Clusters da região</td><td>Descreve cluster, node groups, Fargate profiles, access entries/policies, addons e pod identities</td><td>Configuração AWS do EKS; não inclui RBAC legado <code>aws-auth</code>, custom AMIs/Karpenter completos ou políticas efetivas do pod.</td></tr>
+<tr><td><code>ec2</code></td><td>Instâncias e AMIs em uso</td><td>Consulta AMI, SGs, VPCs, subnets, ACLs e flow logs</td><td>Identidade de hosts e exposição configurada; não executa benchmark no SO nem teste de conectividade.</td></tr>
+<tr><td><code>ecs</code></td><td>Clusters, serviços e tasks correntes</td><td>Resolve task definitions e container instances</td><td>Configuração real das definições referenciadas, incluindo tasks independentes em execução; não é histórico de todas as revisões/stopped tasks.</td></tr>
+<tr><td><code>ecr</code></td><td>Repositórios privados da região</td><td>Consulta registry scanning/replicação, policies, lifecycle e metadados de imagens</td><td>Configuração e digests; não baixa imagens nem todos os findings/SBOMs/assinaturas. JFrog é externo a este módulo.</td></tr>
+<tr><td><code>lambda</code></td><td>Funções da região</td><td>Consulta versões, aliases, policy, URL, concorrência, code signing e event source mappings</td><td>Identidade/configuração de deploy; não baixa código, executa função ou coleta env values.</td></tr>
+<tr><td><code>iam</code></td><td>Usuários e roles da conta</td><td>Consulta política de senha, summary, roles e policies anexadas/inline</td><td>Inventário IAM; não é revisão completa de effective permissions, boundaries, SCPs, IdP ou credenciais de aplicação.</td></tr>
+<tr><td><code>logs</code></td><td>Log groups da região</td><td>Retenção, subscription filters e amostra de metadados do stream mais recente</td><td>Não baixa mensagens. A amostra de stream pode retornar <code>partial/PaginationIncomplete</code> por limitar a 1; isso é amostra declarada, não lista completa de streams.</td></tr>
+<tr><td><code>cloudtrail</code></td><td>Trails visíveis</td><td>Status e seletores</td><td>Não equivale a consultar logs da organização, Event Data Stores ou comprovar conteúdo e prazo de retenção do bucket.</td></tr>
+<tr><td><code>storage</code></td><td>EBS, snapshots próprios, EFS e metadados Secrets Manager</td><td>Inventário de persistência e proteção configurada</td><td>Não lê conteúdo de arquivos/segredos; S3, RDS e outros serviços exigem coleta específica se entrarem no escopo.</td></tr>
+<tr><td><code>backup</code></td><td>Plans, selections, vaults e jobs disponíveis</td><td>Relaciona políticas, recovery points e restore jobs</td><td>Não executa restore. Não cobre sozinho Velero ou backup externo; API pode limitar o histórico consultável.</td></tr>
+<tr><td><code>security</code></td><td>Inspector, GuardDuty, Security Hub e Config disponíveis</td><td>Consulta cobertura/configuração</td><td>Não habilita serviços e não comprova licença, saúde ou política dos agentes Wiz/Falcon/Qualys.</td></tr>
+<tr><td><code>ssm</code></td><td>Managed instances</td><td>Coleta metadados e patch states, lista associations</td><td>Só enxerga instâncias gerenciadas e scans existentes; não executa inventory/scan/patch no host.</td></tr>
+</tbody></table></div>
+<p>Por padrão são consultados todos os módulos. Para uma rodada menor, por exemplo:</p>
+<pre><code>python3 collect_aws.py --profiles corporativo-readonly --regions sa-east-1 --modules eks ec2 ecs ecr lambda logs --out saidas/aws-recorte-01</code></pre>
+<p>Esse recorte <strong>não avalia os módulos omitidos</strong>. A lista selecionada fica no manifesto.</p>
+<p>O padrão <code>--max-details 100</code> limita detalhamentos <strong>por lista</strong>, não a listagem inicial da API. Omissões geram <code>DetailLimit</code>, com total, selecionados e omitidos. Use <code>--max-details 0</code> para detalhamento sem esse limite, considerando tempo e volume. Cada comando tem timeout de 120 segundos e retries padrão limitados a três tentativas no SDK usado pelo CLI. <code>--timeout 240</code> aumenta o tempo máximo por processo; ele inclui paginação e retries.</p>
+<h2>5. Coletar Kubernetes</h2>
+<p>Confira o contexto existente; o kit não altera sua configuração:</p>
+<pre><code>kubectl config get-contexts
+kubectl --context contexto-eks-autorizado cluster-info</code></pre>
+<p>Compare o endpoint mostrado com o EKS autorizado. Se ainda não tiver kubeconfig, use o procedimento da equipe de plataforma para criá-lo. O kit não o faz automaticamente.</p>
+<pre><code>python3 collect_kubernetes.py --context contexto-eks-autorizado --account 111122223333 --region sa-east-1 --out saidas/k8s-20261110-01</code></pre>
+<p>Para limitar os objetos namespaced a um namespace, acrescente <code>--namespace pagamentos</code>. Objetos de cluster — nodes, clusterroles, admission, PV e StorageClasses — continuam sendo consultados com a autorização do contexto. Se seu escopo proibir acesso a esses objetos, não execute este coletor sem ajustar com a equipe responsável; acessos negados serão registrados.</p>
+<p>O script consulta workloads/pods, nós, namespaces, RBAC, service accounts, serviços/ingresses, NetworkPolicies, admission, storage e quotas. Não pede Secrets ou ConfigMaps; remove anotações, comandos, argumentos e valores literais de variáveis das respostas. Não usa <code>exec</code>, <code>logs</code>, <code>apply</code>, <code>patch</code> nem <code>use-context</code>.</p>
+<p>Também são omitidos HTTP headers de probes, atributos/parâmetros arbitrários de storage e docker labels, pois podem conter valores sensíveis. Essa exclusão reduz a capacidade de avaliar esses campos automaticamente. Como anotações são removidas, a associação IRSA em service account deve ser obtida em evidência sanitizada separada com a equipe responsável.</p>
+<p><strong>Saída esperada:</strong> <code>manifest.json</code> e <code>evidence/EV-000001.json...</code>. Campos de identidade da conta/região são declarados pelo operador; não são autenticação AWS deste coletor.</p>
+<h2>6. Interpretar o encerramento</h2>
+<div class="table-wrap"><table><thead><tr><th>Código</th><th>Significado</th><th>O que fazer</th></tr></thead><tbody>
+<tr><td><code>0</code> no coletor</td><td>Consultas presentes terminaram sem falha registrada</td><td>Conferir escopo, evidências e controles externos; não é aprovação da auditoria.</td></tr>
+<tr><td><code>2</code> no coletor</td><td>Há erro/limite/amostra/paginação incompleta</td><td>Gerar o relatório mesmo assim; identificar cada código e completar o que for necessário.</td></tr>
+<tr><td><code>130</code></td><td>Operador interrompeu</td><td>Preservar pasta e gerar relatório parcial; executar nova rodada em outra pasta.</td></tr>
+<tr><td><code>1</code> ou outro erro inesperado</td><td>Erro de execução</td><td>Guardar mensagem, não tratar coleta como completa; diagnosticar antes de usar conclusões.</td></tr>
+</tbody></table></div>
+<p><code>ResourceNotFoundException</code>, <code>NoSuchEntity</code>, <code>RepositoryPolicyNotFoundException</code> e similares podem representar recurso opcional ausente, região/conta errada ou outra condição. O kit preserva o código e não transforma automaticamente em “não aplicável” ou desvio.</p>
+<h2>7. Gerar relatório e plano de ação</h2>
+<pre><code>python3 build_report.py --input saidas/aws-20261110-01 saidas/k8s-20261110-01 --out saidas/relatorio-20261110-01</code></pre>
+<p>Com apenas AWS:</p>
+<pre><code>python3 build_report.py --input saidas/aws-20261110-01 --out saidas/relatorio-aws-01</code></pre>
+<p>O script confere cada hash, o vínculo dos metadados com o manifesto e os caminhos antes de analisar. Falha de integridade impede a geração: recupere a evidência original ou faça outra coleta; não edite o JSON nem recalcule o hash para esconder divergência.</p>
+<div class="table-wrap"><table><thead><tr><th>Arquivo</th><th>Como usar</th></tr></thead><tbody>
+<tr><td><code>RELATORIO.html</code> / <code>.md</code></td><td>Resumo de escopo, 21 requisitos, observações, falhas e declarações externas.</td></tr>
+<tr><td><code>CONTROLES.csv</code></td><td>Uma linha por requisito da fotografia, com necessidade de comprovação e onde buscar.</td></tr>
+<tr><td><code>OBSERVACOES.csv</code></td><td>Um check por recurso/campo, com critério, valor observado e referência de evidência.</td></tr>
+<tr><td><code>EVIDENCIAS.csv</code></td><td>Resolve a referência <code>S1/EV-...</code> para pasta original, arquivo, hash, comando lógico, data e status.</td></tr>
+<tr><td><code>INVENTARIO.csv</code></td><td>Recursos coletados e a evidência que os identifica; não é CMDB completa.</td></tr>
+<tr><td><code>PLANO-ACAO.csv</code></td><td>Pendências por requisito e desvios técnicos por recurso; preencher owner, prioridade e prazo.</td></tr>
+<tr><td><code>RESULTADO.json</code></td><td>Mesma análise estruturada para consumo técnico futuro, sem integração automática com o Hub.</td></tr>
+</tbody></table></div>
+<p>Abra os CSVs como UTF-8 com vírgula como separador se o Excel não separar colunas automaticamente. Campos iniciados por caracteres de fórmula recebem apóstrofo de proteção.</p>
+<h2>8. Conferir uma evidência do início ao fim</h2>
+<p>Exemplo: o relatório mostra <code>CT-05 / EKS_AUDIT / DESVIO_OBSERVADO / S1/EV-000003</code>.</p>
+<ol>
+<li>Abra <code>OBSERVACOES.csv</code> e confirme conta, região, cluster, instante, observado <code>false</code> e critério <code>true</code>.</li>
+<li>Em <code>EVIDENCIAS.csv</code>, procure <code>S1/EV-000003</code>. S1 é a primeira pasta informada a <code>build_report.py</code>; resolva o campo <code>directory</code> + <code>file</code>.</li>
+<li>Abra o JSON, confira <code>metadata.operation=eks.describe-cluster</code> e <code>data.cluster.logging.clusterLogging</code>. Localize a entrada com <code>types</code> contendo <code>audit</code>.</li>
+<li>Confira no console <strong>EKS → cluster → Observability/Logging</strong>. Depois confira o destino no CloudWatch e a retenção aplicável. O nome da seção pode variar conforme a UI.</li>
+<li>Registre se o cluster está no escopo, se há exceção e quem pode alterar o controle. Somente então finalize a ação; o kit não habilita logs nem aceita risco.</li>
+</ol>
+<p>Um <code>VERIFICADO</code> para <code>EKS_AUDIT=true</code> só confirma essa configuração observada. CT-05 ainda exige entrega, acesso, retenção e cobertura. O mesmo raciocínio vale para criptografia, versão de imagem e outros checks positivos.</p>
+<h2>9. Conferir cada item da fotografia</h2>
+<div class="table-wrap"><table><thead><tr><th>Item</th><th>Primeiro lugar para abrir</th><th>Complemento para responder ao auditor</th></tr></thead><tbody>
+<tr><td>CT-01 — Guia seguro</td><td>Guia Confluence deste kit + baseline interna</td><td>Versão aprovada, aprovador, escopo, exceções e evidência de aplicação. Guia novo sem aprovação não deve ser apresentado como controle vigente.</td></tr>
+<tr><td>CT-02 — Contas</td><td>IAM e access entries EKS; RBAC no K8s</td><td>IdP/SSO, revisões de acesso, roles de serviço, emergência e donos. <code>aws-auth</code> legado não foi coletado porque ConfigMaps estão excluídos; solicitar export sanitizado ao owner.</td></tr>
+<tr><td>CT-03 — Hardening</td><td>OBSERVACOES: <code>K8S_*</code>, <code>ECS_*</code>; AMI/nodegroup</td><td>Benchmark do SO/imagem e política aplicada. Privilégios necessários de agentes de infraestrutura exigem exceção, não remoção indiscriminada.</td></tr>
+<tr><td>CT-04 — Interfaces</td><td>Endpoint EKS, SGs, serviços/ingresses, ECS Exec, Lambda URL</td><td>Justificativa, autenticação e caminho real de rede. Uma regra SG não prova sozinha alcance externo.</td></tr>
+<tr><td>CT-05 — Audit logs</td><td><code>EKS_AUDIT</code>, CloudTrail, log groups/filters/streams</td><td>Recebimento recente, integridade, restrição de acesso, retenção e centralização. CloudTrail de API não substitui audit Kubernetes.</td></tr>
+<tr><td>CT-06 — Patches</td><td>AMIs, SSM patch state, cobertura Inspector</td><td>Relatório Wiz/Qualys/Trivy, SLA, idade do scan e correção/rebuild. Não instalar patches manualmente em nós imutáveis sem o processo aprovado.</td></tr>
+<tr><td>CT-07 — Política de senha</td><td>IAM get-account-password-policy</td><td>Política do IdP, SO e apps, conforme identidade realmente usada. Não aplicar política de IAM local ao SSO.</td></tr>
+<tr><td>CT-08 — Senha padrão</td><td>Receita de imagem/provisionamento e checklist do produto</td><td>Evidência de desabilitação/remoção pelo owner. O kit não tenta autenticar com senha padrão.</td></tr>
+<tr><td>CT-09 — Hora</td><td>Host Linux autorizado: <code>examples/host-checks.sh</code></td><td>Registrar host e data, <code>NTPSynchronized</code>/chrony; para Fargate/Lambda documentar responsabilidade gerenciada e validar aplicabilidade.</td></tr>
+<tr><td>CT-10 — Proteção de senha</td><td>Secret references, Secrets Manager e KMS/processo</td><td>Controle de acesso, rotação, tratamento no aplicativo e configuração de criptografia. Não anexar o segredo.</td></tr>
+<tr><td>CT-11 — Antimalware</td><td>Inventário AWS/nós e agentes no K8s</td><td>Console da solução: ativo, política, último contato, modo de proteção, cobertura e tratamento de alertas. Não confundir scan de CVE com antimalware.</td></tr>
+<tr><td>CT-12 — FIM</td><td>Console/política de integridade</td><td>Arquivos monitorados, ativos cobertos, eventos/testes autorizados e tratamento. Sensor presente não comprova FIM.</td></tr>
+<tr><td>CT-13 — Armazenamento</td><td>EBS/EFS e PV/PVC; task definitions/Lambda</td><td>Acesso, classificação, criptografia, dono, retenção; confirmar com auditor qual interpretação de “locais com armazenamento” está no escopo.</td></tr>
+<tr><td>CT-14 — Log transacional</td><td>ECS logging, coletores e configuração do app</td><td>Amostra sanitizada de transação com correlação no destino, retenção e acesso. Metadado de stream não comprova conteúdo.</td></tr>
+<tr><td>CT-15 — Backup</td><td>Plans/selections/recovery points/jobs e solução K8s</td><td>Cobertura dos dados persistentes, RPO/RTO aprovados e restauração testada. Restore job existente não comprova validação funcional da recuperação.</td></tr>
+<tr><td>RG-01 — Registry</td><td>ECR config/policy/lifecycle/scanning</td><td>JFrog: permissões, proxy/cache, auditoria, scanners e lifecycle. Scan policy não comprova scan concluído do digest.</td></tr>
+<tr><td>IM-01 — Imagens</td><td>Digests ECR e <code>imageID</code> dos pods/tasks</td><td>Scan/SBOM/assinatura/attestation vinculados ao digest e execução real de verificação no gate. Tag não é prova de identidade imutável.</td></tr>
+<tr><td>DP-01 — Deploy</td><td>Task definitions, GitHub Actions e Argo CD/Helm</td><td>Execução real com revisão de mudança, gates, aprovações exigidas e digest final em runtime.</td></tr>
+<tr><td>LM-01 — Configuração</td><td>Função, role, policy, URL, VPC/KMS</td><td>Privilégios efetivos, segredos e exposição. Lambda fora de VPC não é automaticamente exposta por rede; revisar caminhos de invocação.</td></tr>
+<tr><td>LM-02 — Deploy Lambda</td><td>Versões, aliases, CodeSha256 e code signing config</td><td>Vincular pacote/versão ao CI e aprovação. Configuração de assinatura não prova verificação para toda forma de pacote.</td></tr>
+<tr><td>LM-03 — Logs Lambda</td><td>LoggingConfig e destino</td><td>Entrega recente, acesso, retenção e eventos esperados. Não invocar funções produtivas apenas para fabricar evidência.</td></tr>
+</tbody></table></div>
+<h2>10. Complementar prova externa e texto de resposta</h2>
+<p>Copie <code>examples/manual-evidence.json</code> para um arquivo de trabalho e substitua os exemplos por referências reais. Campos: <code>control</code>, <code>resource</code>, <code>reference</code>, <code>description</code>, <code>collected_at</code> e <code>owner</code>. Prefira URL do relatório interno/ticket/Confluence controlado e data com timezone. Não informe tokens, senhas, segredos nem dados pessoais desnecessários.</p>
+<pre><code>python3 build_report.py --input saidas/aws-20261110-01 saidas/k8s-20261110-01 --manual evidencias-externas.json --out saidas/relatorio-complementado-01</code></pre>
+<p>O kit registra a declaração; ele não abre a URL nem valida automaticamente a afirmação e não muda o controle para aprovado por causa dela.</p>
+<p>Depois da análise humana, registre a conclusão formal em cópia revisada de <code>CONTROLES.csv</code> ou no sistema interno: estado final, revisor, data, referência da decisão e exceção aplicável. Preserve o resultado automático original; a revisão humana deve ser identificável separadamente.</p>
+<p>Exemplo honesto quando falta evidência:</p>
+<blockquote>Na coleta de [data UTC], o cluster [identificador] apresentou [configuração observada]. A referência [ID] contém a comprovação. A cobertura/eficácia de [controle] ainda depende de [fonte]. A pendência foi registrada para [equipe], com prazo [a aprovar].</blockquote>
+<p>Exemplo quando há evidência completa revisada pelo responsável:</p>
+<blockquote>Para os recursos [escopo], o controle [nome] está descrito na baseline [versão aprovada]. A evidência [relatório/execução], de [data], demonstra [resultado específico]. Exceções [IDs/nenhuma verificada] foram revisadas por [responsável].</blockquote>
+<p>Não substitua os campos por afirmações genéricas como “toda AWS está coberta”.</p>
+<h2>11. Transformar pendências em plano de ação</h2>
+<p>Abra <code>PLANO-ACAO.csv</code>. Uma ação por requisito representa comprovação pendente; ações <code>AC-OBS-*</code> representam desvios de configuração observados. Revise duplicatas e junte ações que dependam da mesma mudança, mantendo os IDs/evidências.</p>
+<p>Para cada ação, preencha: owner real, impacto/risco validado, prioridade, data-alvo aprovada, dependência, eventual exceção com validade e evidência de encerramento. O kit deixa esses campos a definir porque não conhece seu SLA nem a autoridade de aceitação.</p>
+<p>Exemplo de encerramento: para log audit desabilitado, a prova pode exigir mudança autorizada, nova configuração e recebimento confirmado no destino. Não encerre apenas porque um ticket foi aberto.</p>
+<h2>12. Diagnóstico e critérios de parada</h2>
+<div class="table-wrap"><table><thead><tr><th>Sinal</th><th>Interpretação</th><th>Próxima ação</th></tr></thead><tbody>
+<tr><td><code>ExecutableNotFound</code></td><td>AWS CLI/kubectl ausente no PATH</td><td>Instalar/configurar pelo canal aprovado e repetir em pasta nova.</td></tr>
+<tr><td><code>AccessDenied*</code>, <code>Unauthorized*</code>, <code>Forbidden</code></td><td>A sessão não autoriza a consulta</td><td>Solicitar leitura ao owner; registrar limitação. Não significa recurso ausente.</td></tr>
+<tr><td><code>ExpiredToken*</code>, <code>InvalidClientTokenId</code>, <code>UnrecognizedClientException</code></td><td>Sessão inválida/expirada</td><td>Renovar login corporativo e conferir STS antes de nova rodada.</td></tr>
+<tr><td><code>Timeout</code></td><td>O processo inteiro não concluiu no prazo</td><td>Conferir rede/VPN/endpoint, volume e timeout; não desligar verificação TLS.</td></tr>
+<tr><td><code>PaginationIncomplete</code></td><td>Há token ou amostra limitada</td><td>Identificar comando. Em log streams, é amostra intencional; nos demais, repetir/diagnosticar antes de declarar cobertura.</td></tr>
+<tr><td><code>DetailLimit</code></td><td>Listagem conhecida maior que detalhamento</td><td>Rever omitidos e usar <code>--max-details 0</code> se autorizado e necessário.</td></tr>
+<tr><td><code>ResourceFailures</code></td><td>API retornou falhas por recurso mesmo com HTTP 200</td><td>Abrir evidência, verificar recursos afetados e repetir conforme causa.</td></tr>
+<tr><td><code>InvalidJSON</code>, <code>CLIError</code></td><td>CLI/operação incompatível ou erro não classificado</td><td>Validar AWS CLI v2 atual e comando documentado, sem compartilhar logs debug com credenciais.</td></tr>
+<tr><td>Falha de integridade</td><td>Arquivo diverge do manifesto/metadados</td><td>Parar o uso daquela fonte; recuperar original ou repetir coleta.</td></tr>
+<tr><td>Fonte sem estado <code>finished</code></td><td>Coleta interrompida ou abortada</td><td>Identificar módulos não consultados e fazer nova rodada.</td></tr>
+</tbody></table></div>
+<p>O resultado pode ficar <code>NAO_VERIFICADO</code> mesmo sem falha de API: isso acontece quando falta critério, evidência de eficácia ou fonte externa.</p>
+<h2>13. Confluence e manutenção</h2>
+<p>Abra <code>CONFLUENCE-HARDENING.html</code>, copie o conteúdo renderizado e cole em uma página interna com edição restrita. Confira se tabelas, listas e blocos de código foram preservados pela sua versão do editor. O arquivo HTML é uma fonte de cópia, não um formato universal de importação do Confluence.</p>
+<p>Preencha owner, aprovadores, versão e data de revisão. Classifique como proposta até aprovação. A página deve apontar para evidências corporativas controladas, não para segredos ou para arquivos do computador pessoal. Consulte o Markdown para manter o conteúdo em Git.</p>
+<h2>14. Preservação e repetição</h2>
+<p>Guarde as pastas originais de coleta junto do relatório, com acesso restrito e retenção corporativa. O relatório referencia seus caminhos; copiar apenas o HTML perde a capacidade de conferir os JSONs. Uma nova execução recebe nova pasta. Guarde a versão do kit junto dos resultados.</p>
+<p>SHA-256 comprova consistência com o manifesto local, não assinatura/autenticidade da AWS. Para cadeia de custódia formal, use armazenamento e processo de evidências aprovados pela empresa. Não publique o conjunto em repositório público.</p>
+<p>Para conferir o kit sem AWS, execute:</p>
+<pre><code>python3 -m unittest discover -s tests -v</code></pre>
+<p>O teste completo usa CLIs locais simuladas; seus resultados são validação do software, não evidência do ambiente corporativo. Veja <a href="VALIDACAO.html">VALIDACAO.md</a>.</p></main></body></html>

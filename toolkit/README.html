@@ -1,0 +1,51 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kit de preparação da auditoria AWS</title><style>body{margin:0;background:#f3f5f8;color:#172b4d;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+main{max-width:1120px;margin:32px auto;background:white;padding:40px;border-radius:12px;box-shadow:0 2px 10px #172b4d12}
+h1{font-size:30px;line-height:1.2;color:#102a43}h2{font-size:23px;margin-top:38px;border-top:2px solid #dbe5ef;padding-top:20px}h3{font-size:19px;margin-top:26px}
+p,li{max-width:100%}a{color:#0052cc}code{font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf2f7;padding:2px 4px;border-radius:3px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102a43;color:#eef5fc;border-radius:7px;padding:18px}pre code{background:none;color:inherit;padding:0}
+.table-wrap{overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;background:#e8f0fb;color:#102a43}th,td{border:1px solid #d9e2ec;padding:10px 12px;vertical-align:top;min-width:100px}tr:nth-child(even){background:#f8fafc}
+blockquote{border-left:4px solid #0052cc;padding:10px 18px;background:#eef5ff;margin:20px 0}footer{font-size:12px;color:#526777;margin-top:36px}
+@media(max-width:700px){main{margin:0;padding:18px;border-radius:0}h1{font-size:25px}th,td{padding:7px}}
+@media print{body{background:white}main{box-shadow:none;margin:0;padding:0;max-width:none}h2,h3{break-after:avoid}tr{break-inside:avoid}a{color:inherit}}
+</style></head><body><main><h1>Kit de preparação da auditoria AWS</h1>
+<p>Este pacote permite levantar o estado de <strong>EKS/EC2, ECS/Fargate, ECR e Lambda</strong>, relacionar as evidências aos 21 itens da lista da auditoria e preparar um plano de ação. O operador executa no seu computador de trabalho com a sessão corporativa autorizada.</p>
+<h2>Por onde começar</h2>
+<ol>
+<li>Abra o <a href="RUNBOOK.html">RUNBOOK</a>: pré-requisitos, funcionamento dos scripts, execução e conferência de cada item.</li>
+<li>Verifique as <a href="PERMISSOES.html">permissões necessárias</a> com o administrador; o coletor registra acessos negados e continua onde consegue.</li>
+<li>Execute as coletas AWS e Kubernetes e gere o relatório offline. Os comandos estão no runbook.</li>
+<li>Abra <code>RELATORIO.html</code> na pasta de saída e confira os CSVs. O relatório aponta para os JSON de evidência preservados nas pastas de coleta.</li>
+<li>Complete a prova externa — CI/CD, Wiz/Falcon/Qualys, IdP, JFrog, benchmark e restauração — e revise <code>PLANO-ACAO.csv</code>.</li>
+</ol>
+<p>Após extrair o ZIP, você pode conferir sua consistência local com <code>python3 package_audit.py --verify .</code> (Windows: <code>py -3 package_audit.py --verify .</code>). O comando deve ser executado dentro da pasta <code>auditoria-aws</code>, onde está <code>package-manifest.json</code>. Esse hash não substitui validação corporativa da origem do kit.</p>
+<p>Para publicar o guia interno, use <a href="CONFLUENCE-HARDENING.html">CONFLUENCE-HARDENING.html</a>: abra no navegador, copie o conteúdo formatado para uma página do Confluence e siga as instruções de governança. O <a href="CONFLUENCE-HARDENING.html">Markdown equivalente</a> é a fonte versionável. O guia precisa de aprovação interna; a entrega não demonstra que os controles já estão implantados.</p>
+<h2>Exemplo de execução</h2>
+<p>Troque os valores fictícios antes de executar. Cada saída deve ser uma pasta nova. Em Windows, use <code>py -3</code> no lugar de <code>python3</code>.</p>
+<pre><code>python3 collect_aws.py --profiles corporativo-readonly --regions sa-east-1 --expected-accounts 111122223333 --out saidas/aws-20261110-01
+python3 collect_kubernetes.py --context contexto-eks-autorizado --account 111122223333 --region sa-east-1 --out saidas/k8s-20261110-01
+python3 build_report.py --input saidas/aws-20261110-01 saidas/k8s-20261110-01 --out saidas/relatorio-20261110-01</code></pre>
+<p>O código de saída <code>2</code> dos coletores significa que alguma consulta ficou incompleta ou retornou erro, <strong>não que o ambiente falhou na auditoria</strong>. Gere o relatório para identificar os motivos. O <code>build_report.py</code> usa <code>0</code> para sucesso e <code>1</code> para erro de entrada/integridade.</p>
+<h2>O que está no pacote</h2>
+<div class="table-wrap"><table><thead><tr><th>Arquivo</th><th>Papel</th></tr></thead><tbody>
+<tr><td><code>collect_aws.py</code></td><td>Consulta APIs AWS com perfil/região explícitos; identifica a conta antes de coletar.</td></tr>
+<tr><td><code>collect_kubernetes.py</code></td><td>Consulta objetos do contexto informado; não altera o kubeconfig.</td></tr>
+<tr><td><code>build_report.py</code></td><td>Confere SHA-256 e metadados, analisa observações e gera relatório/CSVs.</td></tr>
+<tr><td><code>auditlib/</code></td><td>Allowlist de consultas, sanitização, coletores e regras observacionais.</td></tr>
+<tr><td><code>examples/manual-evidence.json</code></td><td>Modelo para anexar referências de evidências externas; não aprova controles automaticamente.</td></tr>
+<tr><td><code>examples/host-checks.sh</code></td><td>Consultas locais de leitura a executar manualmente em host Linux autorizado.</td></tr>
+<tr><td><code>examples/iam-readonly-policy.json</code></td><td>Permissões de leitura propostas para revisão do administrador; não é anexada a nenhuma identidade pelo kit.</td></tr>
+<tr><td><code>RUNBOOK.md</code> / <code>.html</code></td><td>Roteiro de execução e investigação.</td></tr>
+<tr><td><code>CONFLUENCE-HARDENING.md</code> / <code>.html</code></td><td>Guia de configuração segura e seu ciclo de aprovação.</td></tr>
+<tr><td><code>VALIDACAO.md</code></td><td>O que foi testado e os limites da validação.</td></tr>
+<tr><td><code>tests/</code></td><td>Testes locais, incluindo percurso completo com CLIs simuladas.</td></tr>
+</tbody></table></div>
+<h2>Limites que importam na apresentação</h2>
+<ul>
+<li>O kit <strong>não certifica conformidade</strong> e não corrige configurações.</li>
+<li><code>VERIFICADO</code> descreve um campo observado, não todo um requisito de auditoria.</li>
+<li>Logs habilitados não provam entrega; backups existentes não provam restauração; sensor presente não prova cobertura/saúde/FIM.</li>
+<li>Fargate e Lambda não expõem o host para inspeção do cliente. A aplicabilidade de controles do SO precisa de justificativa e revisão do auditor.</li>
+<li>A execução aqui foi local e simulada; nenhuma conta corporativa ou pessoal foi acessada para esta entrega.</li>
+<li>ECR não representa JFrog; IAM não representa todas as contas do SSO, SO ou aplicações; AWS CLI não lê RBAC Kubernetes.</li>
+</ul>
+<p>O pacote não depende do Base Image Hub, Diun, Vunnel ou de qualquer PoC anterior. Não substitui GitHub Actions, Argo CD, scanners nem ferramentas já existentes.</p></main></body></html>

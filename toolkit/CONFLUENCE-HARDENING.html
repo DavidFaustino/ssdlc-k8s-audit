@@ -1,0 +1,160 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guia interno de configuração segura — Kubernetes, contêineres e imagens</title><style>body{margin:0;background:#f3f5f8;color:#172b4d;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+main{max-width:1120px;margin:32px auto;background:white;padding:40px;border-radius:12px;box-shadow:0 2px 10px #172b4d12}
+h1{font-size:30px;line-height:1.2;color:#102a43}h2{font-size:23px;margin-top:38px;border-top:2px solid #dbe5ef;padding-top:20px}h3{font-size:19px;margin-top:26px}
+p,li{max-width:100%}a{color:#0052cc}code{font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf2f7;padding:2px 4px;border-radius:3px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102a43;color:#eef5fc;border-radius:7px;padding:18px}pre code{background:none;color:inherit;padding:0}
+.table-wrap{overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;background:#e8f0fb;color:#102a43}th,td{border:1px solid #d9e2ec;padding:10px 12px;vertical-align:top;min-width:100px}tr:nth-child(even){background:#f8fafc}
+blockquote{border-left:4px solid #0052cc;padding:10px 18px;background:#eef5ff;margin:20px 0}footer{font-size:12px;color:#526777;margin-top:36px}
+@media(max-width:700px){main{margin:0;padding:18px;border-radius:0}h1{font-size:25px}th,td{padding:7px}}
+@media print{body{background:white}main{box-shadow:none;margin:0;padding:0;max-width:none}h2,h3{break-after:avoid}tr{break-inside:avoid}a{color:inherit}}
+</style></head><body><main><h1>Guia interno de configuração segura — Kubernetes, contêineres e imagens</h1>
+<div class="table-wrap"><table><thead><tr><th>Controle documental</th><th>Valor</th></tr></thead><tbody>
+<tr><td>Identificador sugerido</td><td>GUIA-CONTAINERS-001</td></tr>
+<tr><td>Versão desta proposta</td><td>0.1 — preparada em 10/11/2026</td></tr>
+<tr><td>Estado</td><td><strong>Proposta técnica para revisão e aprovação interna</strong></td></tr>
+<tr><td>Owner do documento</td><td>Preencher equipe responsável</td></tr>
+<tr><td>Aprovadores</td><td>Preencher Segurança e Plataforma, conforme governança interna</td></tr>
+<tr><td>Escopo aprovado</td><td>Preencher contas, regiões, clusters, workloads e ambientes</td></tr>
+<tr><td>Benchmark aplicável</td><td>Preencher nome, edição/versão e perfil adotados</td></tr>
+<tr><td>Próxima revisão</td><td>Definir conforme política interna e mudanças relevantes</td></tr>
+<tr><td>Evidências de aprovação e aplicação</td><td>Vincular páginas/tickets/execuções internos</td></tr>
+</tbody></table></div>
+<p><strong>Como usar esta página:</strong> consultar a regra da camada, identificar quem a aplica e anexar a evidência indicada. A redação “deve” descreve a baseline proposta. Após aprovação interna, registrar a versão vigente; antes disso, não apresentar esta página como prova de um controle já implementado.</p>
+<h2>1. Objetivo e limites</h2>
+<p>Estabelecer uma referência única para configurar, construir, liberar e operar imagens e contêineres com controles verificáveis. O guia atende ao item “existência de guias de configuração segura” da lista de auditoria e organiza os requisitos relacionados. <strong>A existência do guia não demonstra aplicação nem eficácia.</strong> Essa demonstração exige evidência por ambiente e recurso.</p>
+<p>Escopo técnico: imagens base e de aplicação, registry, CI/CD, Kubernetes/EKS, nós EC2, ECS em EC2/Fargate e controles relacionados de Lambda. Não substitui as políticas corporativas de acesso, vulnerabilidades, senhas, retenção, backup, mudanças e aceitação de risco. Em caso de conflito, registrar a divergência e obter decisão da autoridade interna; não presumir prioridade deste rascunho.</p>
+<h2>2. Quem faz o quê</h2>
+<div class="table-wrap"><table><thead><tr><th>Papel</th><th>Responsabilidade</th><th>Evidência esperada</th></tr></thead><tbody>
+<tr><td>Segurança / DevSecOps</td><td>Definir baseline, critérios dos scanners e validação de risco</td><td>Regra versionada, benchmark, relatório e decisão rastreável.</td></tr>
+<tr><td>Plataforma / Foundation</td><td>Aplicar configuração do cluster, nó, rede, admission e esteira sob sua autoridade</td><td>IaC/Helm/AMI versionados, revisão e configuração efetiva.</td></tr>
+<tr><td>Dono da imagem base</td><td>Manter origem, dependências, hardening, suporte e rebuild</td><td>Receita, digest, SBOM, scans e liberação vinculados.</td></tr>
+<tr><td>Time da aplicação</td><td>Validar compatibilidade, permissões, logs, dados e consumo da base</td><td>Build/testes, release, deployment e comportamento em runtime.</td></tr>
+<tr><td>Operação / equipe da ferramenta de segurança</td><td>Garantir cobertura, saúde, políticas, alertas e resposta</td><td>Console/relatório por ativo e período, com tratamento registrado.</td></tr>
+<tr><td>Autoridade de risco</td><td>Aprovar exceções conforme governança vigente</td><td>Justificativa, controle compensatório, escopo, validade e reavaliação.</td></tr>
+</tbody></table></div>
+<p>Os nomes das equipes são papéis, não atribuição formal de pessoas. Confirmar a matriz de responsabilidade internamente.</p>
+<h2>3. Processo e pontos de controle</h2>
+<pre><code>Origem autorizada → Receita de build versionada → Build e testes
+  → Scans e validação da baseline → Decisão / gate da camada
+  → Publicação do digest + evidências no registry/repositório apropriado
+  → Deploy pela esteira existente → Confirmação do digest em runtime
+  → Monitoramento / reavaliação → Correção ou exceção com prazo</code></pre>
+<p>Cada passagem precisa preservar o vínculo entre imagem, versão/digest, commit, execução, evidências e decisão. Reconstruir uma base não atualiza aplicações já construídas: consumidores afetados precisam passar pelo seu próprio rebuild, teste e deploy.</p>
+<p><strong>Aplicação ao processo documentado:</strong> GitHub Actions continua sendo a esteira; Helm/Argo CD continuam no caminho de deploy descrito. Os documentos existentes registram scans e aprovação na primeira camada de base e uma pendência de aprovação equivalente na camada derivada. Antes de afirmar que todas as camadas aplicam o mesmo gate, anexar execuções reais de ambas. O tipo de aprovação, humana ou automática, deve ser confirmado pela configuração vigente.</p>
+<h3>3.1 Registro mínimo por liberação</h3>
+<div class="table-wrap"><table><thead><tr><th>Objeto</th><th>Identidade e vínculo mínimo</th></tr></thead><tbody>
+<tr><td>Origem</td><td>Registry, nome, referência observada, digest e origem autorizada.</td></tr>
+<tr><td>Imagem construída</td><td>Digest, arquitetura/plataforma, receita e commit.</td></tr>
+<tr><td>Execução</td><td>Workflow/job/run ID, data UTC, ferramentas e versões.</td></tr>
+<tr><td>Evidência</td><td>Scan, SBOM, assinatura/attestation quando exigidas, resultado e local controlado.</td></tr>
+<tr><td>Decisão</td><td>Regra aplicada, resultado, responsável/autoridade, exceção e validade quando houver.</td></tr>
+<tr><td>Consumo</td><td>Aplicação, ambiente, cluster/namespace/workload ou task/função e digest/versão efetivos.</td></tr>
+</tbody></table></div>
+<h2>4. Controles por camada</h2>
+<h3>4.1 Imagens base e imagens de aplicação</h3>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Regra proposta</th><th>Como aplicar e conferir</th><th>Evidência</th></tr></thead><tbody>
+<tr><td>IMG-01</td><td>Usar origem autorizada e identidade rastreável</td><td>Registrar o digest resolvido por plataforma. Tags podem facilitar a distribuição, mas não substituem a identidade do conteúdo.</td><td>Origem, digest pai/filho, manifesto e execução.</td></tr>
+<tr><td>IMG-02</td><td>Reduzir a superfície da imagem</td><td>Instalar somente componentes necessários; manter receita e dependências revisadas; excluir ferramentas de debug desnecessárias da distribuição produtiva.</td><td>Dockerfile/receita, revisão e inventário/SBOM.</td></tr>
+<tr><td>IMG-03</td><td>Executar aplicação sem root, quando compatível</td><td>Definir usuário e validar UID/permissões efetivas. Nome de usuário, isoladamente, não comprova UID não zero.</td><td>Receita, security context/task definition e teste funcional.</td></tr>
+<tr><td>IMG-04</td><td>Impedir segredos no artefato</td><td>Não incorporar senha, token, chave privada ou credencial em camadas, argumentos ou arquivos de build. Usar o mecanismo aprovado de segredo de build/runtime.</td><td>Configuração e resultado do controle de segredos, sem valores sensíveis.</td></tr>
+<tr><td>IMG-05</td><td>Avaliar vulnerabilidades e configuração antes da liberação</td><td>Reusar scanners existentes. Registrar data do feed/scan, digest, política e exceções; não converter ausência de finding em garantia absoluta.</td><td>Reports de scan e gate da execução real.</td></tr>
+<tr><td>IMG-06</td><td>Atualizar componentes dentro da política de suporte e SLA</td><td>Relacionar finding aplicável, correção disponível e plano de rebuild. Vulnerabilidade sem fix exige tratamento, não aprovação silenciosa.</td><td>Finding, versão corrigida/mitigação, decisão e nova avaliação.</td></tr>
+<tr><td>IMG-07</td><td>Produzir e verificar evidências exigidas</td><td>Vincular SBOM e proveniência ao digest; quando assinatura/attestation forem exigidas, comprovar a verificação no gate.</td><td>Artefato, resultado da verificação e identidade autorizada.</td></tr>
+</tbody></table></div>
+<h3>4.2 Kubernetes / EKS e workloads Linux</h3>
+<p>O Pod Security Standards distingue <code>Privileged</code>, <code>Baseline</code> e <code>Restricted</code>. Selecionar perfil por classe de workload, versão de Kubernetes e necessidade operacional. Aplicar gradualmente <code>audit</code>/<code>warn</code> antes de <code>enforce</code> quando necessário para avaliar impacto; <strong>não confundir aviso com bloqueio</strong>. A política aprovada deve registrar versão e exceções. <a href="https://kubernetes.io/docs/concepts/security/pod-security-standards/">Referência Kubernetes</a>.</p>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Regra proposta</th><th>Como aplicar e conferir</th><th>Evidência</th></tr></thead><tbody>
+<tr><td>K8S-01</td><td>Acesso humano e de serviço com menor privilégio</td><td>Relacionar federação/IAM, EKS access entries e RBAC. Revisar <code>cluster-admin</code>, wildcard e contas de emergência; inventariar o modo legado de autenticação quando usado.</td><td>Entradas de acesso, roles/bindings, revisão de acesso e proprietário.</td></tr>
+<tr><td>K8S-02</td><td>Conter privilégios de workloads de aplicação</td><td>Avaliar <code>privileged=false</code>, <code>runAsNonRoot=true</code> e <code>allowPrivilegeEscalation=false</code>; aplicar ao contêiner e considerar herança válida do pod.</td><td>Manifesto efetivo e teste de execução/compatibilidade.</td></tr>
+<tr><td>K8S-03</td><td>Restringir escrita e capacidades</td><td>Usar root filesystem somente leitura e volumes explícitos para escrita; remover capabilities desnecessárias. <code>drop: ALL</code> é a baseline proposta para aplicações, com adições justificadas.</td><td>Security context, volumes e exceção quando necessária.</td></tr>
+<tr><td>K8S-04</td><td>Restringir chamadas ao kernel</td><td>Adotar perfil seccomp compatível, como <code>RuntimeDefault</code>; perfil <code>Localhost</code> exige arquivo e gestão no nó. Não usar <code>Unconfined</code> sem justificativa aprovada.</td><td>Perfil declarado, presença/gestão do perfil quando local e teste.</td></tr>
+<tr><td>K8S-05</td><td>Evitar compartilhamento do host por aplicações</td><td>Revisar <code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code>, <code>hostPath</code>, mounts sensíveis e acesso ao socket do runtime. Componentes de infraestrutura podem precisar de exceção específica.</td><td>Manifesto, justificativa, escopo e revisão da exceção.</td></tr>
+<tr><td>K8S-06</td><td>Delimitar identidade do workload</td><td>Usar service account específica quando necessária; reduzir permissões Kubernetes e AWS. Desabilitar montagem automática de token nos workloads que não usam a API.</td><td>Service account, bindings, role/pod identity e configuração do pod.</td></tr>
+<tr><td>K8S-07</td><td>Controlar consumo e isolamento</td><td>Definir requests/limits e quotas conforme dimensionamento; separar workloads/ambientes conforme arquitetura e requisitos de isolamento.</td><td>Manifestos, quotas, testes de carga e decisão de capacidade.</td></tr>
+<tr><td>K8S-08</td><td>Aplicar políticas de rede e exposição</td><td>Restringir fluxos necessários e interfaces administrativas. NetworkPolicy só produz bloqueio se houver implementação compatível e enforcement ativo; provar efeito em teste autorizado.</td><td>Política, CNI/configuração e teste de tráfego permitido/negado.</td></tr>
+<tr><td>K8S-09</td><td>Admission coerente com a política</td><td>Identificar quais controles bloqueiam publicação/deploy. Definir escopo, failure policy, disponibilidade e exceções; um webhook instalado não comprova uma política efetiva.</td><td>Regra, configuração e teste autorizado de admissão.</td></tr>
+</tbody></table></div>
+<p>Os controles de security context têm escopo e herança específicos; validar os campos no nível correto de pod/contêiner. <a href="https://kubernetes.io/docs/tasks/configure-pod-container/security-context/">Referência de security context</a>. O requisito de enforcement da rede está na <a href="https://kubernetes.io/docs/concepts/services-networking/network-policies/">documentação de NetworkPolicy</a>.</p>
+<p><strong>Exemplo de configuração de aplicação Linux — não é um deployment completo:</strong></p>
+<pre><code>spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: aplicacao
+      # Definir image, portas, volumes, recursos e probes no manifesto real.
+      securityContext:
+        privileged: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [&quot;ALL&quot;]</code></pre>
+<p>Não aplicar esse trecho indiscriminadamente em agentes de segurança, CSI/CNI, Windows ou componentes que exigem privilégios. Validar UID, diretórios de escrita, recursos e compatibilidade antes de promover a mudança.</p>
+<h3>4.3 Nós EC2 e execução ECS/Fargate</h3>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Regra proposta</th><th>Como aplicar e conferir</th><th>Evidência</th></tr></thead><tbody>
+<tr><td>HOST-01</td><td>Baseline do SO identificada e medida</td><td>Relacionar AMI/versão/perfil ao benchmark aprovado. Inventário de AMI não substitui relatório de benchmark do SO.</td><td>AMI/receita e relatório datado por ativo ou amostra justificada.</td></tr>
+<tr><td>HOST-02</td><td>Patch conforme modelo operacional</td><td>Em nós imutáveis, preferir o mecanismo de atualização/substituição aprovado; em hosts mutáveis, seguir janela e executor definidos. Não usar dois executores concorrentes sem desenho explícito.</td><td>Scan, plano de atualização, mudança e nova avaliação.</td></tr>
+<tr><td>HOST-03</td><td>Sincronização de hora verificada</td><td>Conferir fonte e estado NTP/chrony no host sob gestão do cliente. Horário atual, isoladamente, não comprova sincronização contínua.</td><td><code>chronyc tracking/sources</code> ou mecanismo equivalente, host e data.</td></tr>
+<tr><td>ECS-01</td><td>Task definitions revisadas</td><td>Avaliar privilégio, usuário, filesystem, roles, segredos, recursos, rede e logs por revisão efetivamente utilizada.</td><td>Task definition, serviço/task e execução que a liberou.</td></tr>
+<tr><td>ECS-02</td><td>Aplicabilidade por sistema operacional</td><td>No ECS Linux, <code>readonlyRootFilesystem</code> omitido tem default <code>false</code>; a opção não é suportada para contêineres Windows. Usar baseline Windows específica.</td><td>OS family e regra aplicável à revisão da task.</td></tr>
+<tr><td>FGT-01</td><td>Responsabilidade gerenciada explicitada</td><td>Fargate não dá acesso ao host subjacente. Manter controles de imagem, identidade, rede, dados e aplicação e obter evidência adequada para controles de infraestrutura AWS.</td><td>Matriz de responsabilidade e referência de asseguração aplicável ao serviço.</td></tr>
+</tbody></table></div>
+<p>Fontes: <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters_ec2.html">parâmetros ECS</a>, <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-security-considerations.html">limites Fargate</a> e <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configure-time-sync.html">Amazon Time Sync</a>.</p>
+<h3>4.4 Acesso, senhas, segredos e dados</h3>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Regra proposta</th><th>Evidência e cuidados</th></tr></thead><tbody>
+<tr><td>SEC-01</td><td>Política de autenticação aplicável por identidade</td><td>Aplicar a política aprovada do IdP/SSO a humanos e políticas específicas a identidades locais/técnicas. Política de senha IAM local não comprova controles do SSO, Linux ou aplicação.</td></tr>
+<tr><td>SEC-02</td><td>Credenciais padrão removidas</td><td>Manter checklist do provisionamento/produto, configuração e revisão do owner; não registrar senhas nem provar o controle com tentativas não autorizadas de autenticação.</td></tr>
+<tr><td>SEC-03</td><td>Segredos com acesso restrito e ciclo de vida</td><td>Usar mecanismo aprovado, criptografia, menor privilégio e rotação conforme risco/política. Em evidências, usar referências e metadados, nunca o valor.</td></tr>
+<tr><td>SEC-04</td><td>Criptografia interpretada por camada</td><td>Avaliar API data, EBS/EFS, transporte e chaves conforme requisito. No EKS 1.28+, existe envelope encryption padrão para dados da API; ausência de chave do cliente em <code>encryptionConfig</code> não prova texto claro. Validar separadamente a exigência de chave gerenciada pelo cliente.</td></tr>
+<tr><td>SEC-05</td><td>Persistência inventariada</td><td>Relacionar volume, aplicação, dono, classificação, acesso e retenção. PV/PVC criado não prova proteção de todo o dado da aplicação.</td></tr>
+</tbody></table></div>
+<p>Fonte para o comportamento gerenciado: <a href="https://docs.aws.amazon.com/eks/latest/userguide/envelope-encryption.html">EKS envelope encryption</a>.</p>
+<h3>4.5 Registry, logs, runtime e recuperação</h3>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Regra proposta</th><th>Evidência necessária</th></tr></thead><tbody>
+<tr><td>REG-01</td><td>Registry com acesso e promoção controlados</td><td>Policies, identidades de leitura/escrita, criptografia, regra de tags/aliases, lifecycle e auditoria de publicação. ECR e JFrog devem ser avaliados separadamente.</td></tr>
+<tr><td>REG-02</td><td>Scan associado ao digest</td><td>Configuração do scan, cobertura do repositório, resultado concluído para o digest e política aplicada. Basic/enhanced têm escopos próprios; scan configurado não é scan executado.</td></tr>
+<tr><td>LOG-01</td><td>Auditoria de APIs e cluster preservada</td><td>Configuração e evidência de entrega do EKS audit e CloudTrail conforme escopo; acesso e retenção aprovados. As duas fontes registram superfícies diferentes.</td></tr>
+<tr><td>LOG-02</td><td>Logs transacionais utilizáveis e protegidos</td><td>Eventos necessários do aplicativo com correlação e destino, controle de acesso, retenção e mascaramento de dados sensíveis; amostra autorizada e datada.</td></tr>
+<tr><td>RUN-01</td><td>Proteção de runtime com cobertura comprovada</td><td>Inventário esperado versus ativos protegidos, política, modo de operação, saúde/último contato e tratamento de alertas. Não equiparar sensor instalado, scan de vulnerabilidade e antimalware.</td></tr>
+<tr><td>RUN-02</td><td>FIM quando exigido/aplicável</td><td>Escopo de arquivos/configurações, ativos, política e eventos. Imagem imutável ou assinatura não substitui automaticamente o requisito de monitoramento de integridade.</td></tr>
+<tr><td>BCP-01</td><td>Backup orientado ao dado persistente</td><td>Política, seleção/cobertura, execução e recovery point; RPO/RTO aprovados e teste de restauração com validação funcional e responsável.</td></tr>
+</tbody></table></div>
+<p>Fontes: <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html">ECR scanning</a> e <a href="https://docs.aws.amazon.com/eks/latest/best-practices/auditing-and-logging.html">auditoria EKS</a>. Prazos e cobertura são decisões internas; este guia não define retenção ou SLA arbitrários.</p>
+<h3>4.6 Controles relacionados de Lambda</h3>
+<p>Relacionar função, role, versão, alias e hash do pacote à execução aprovada da esteira. Revisar resource policy, event sources, URLs de <code>$LATEST</code> <strong>e dos aliases</strong>, permissões e tratamento de segredos. Não presumir que Lambda fora de VPC está exposta à internet: revisar o caminho de invocação e autorização.</p>
+<p>Relacionar cada função ao destino de logging e comprovar entrega/retencão. Assinatura, quando exigida, precisa ser avaliada conforme o tipo de pacote e o mecanismo utilizado. Controles do host gerenciado exigem matriz de responsabilidade, não comandos de inspeção do SO.</p>
+<p>Fontes: <a href="https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html">URLs de funções e aliases</a> e <a href="https://docs.aws.amazon.com/lambda/latest/dg/monitoring-logs.html">logs Lambda</a>.</p>
+<h2>5. Verificação, exceções e tratamento</h2>
+<h3>5.1 Como verificar a aplicação do guia</h3>
+<ol>
+<li>Selecionar escopo, versão da baseline e critério aplicável ao runtime.</li>
+<li>Coletar configuração efetiva e identidade dos artefatos/ativos, seguindo o runbook.</li>
+<li>Anexar evidências das ferramentas e do processo: scanner, benchmark, revisão/gate, logs, saúde, FIM e restore, conforme controle.</li>
+<li>Comparar observado e esperado; separar desvio de configuração, falta de evidência e aplicabilidade ainda não decidida.</li>
+<li>Registrar ação com owner, prazo aprovado, impacto e evidência de encerramento.</li>
+<li>Revisar periodicamente e após mudanças relevantes de plataforma, fornecedor, receita ou política.</li>
+</ol>
+<p>O kit gera observações técnicas, não uma declaração automática de conformidade. Declaração manual de evidência também exige revisão; anexar uma URL sem conteúdo verificado não encerra o requisito.</p>
+<h3>5.2 Registro de exceção</h3>
+<div class="table-wrap"><table><thead><tr><th>Campo</th><th>O que registrar</th></tr></thead><tbody>
+<tr><td>Escopo</td><td>Contas, ambiente, recursos/digests e controle afetado.</td></tr>
+<tr><td>Justificativa</td><td>Necessidade técnica/negócio e razão da incompatibilidade com a baseline.</td></tr>
+<tr><td>Avaliação</td><td>Risco, impacto, dependências e autoridade responsável pela decisão.</td></tr>
+<tr><td>Compensação</td><td>Medida concreta, sua cobertura e evidência de funcionamento.</td></tr>
+<tr><td>Validade</td><td>Data final e gatilho de reavaliação, conforme política vigente.</td></tr>
+<tr><td>Plano</td><td>Responsável, prazo e comprovação prevista para remoção da exceção.</td></tr>
+</tbody></table></div>
+<p>Exceção não apaga achado nem altera retroativamente a evidência. Um componente de infraestrutura privilegiado pode ser necessário; a decisão deve estar registrada em vez de marcar o ambiente inteiro como conforme ou remover privilégio sem avaliar impacto.</p>
+<h2>6. Relação com a lista do auditor e publicação</h2>
+<div class="table-wrap"><table><thead><tr><th>Lista recebida</th><th>Seção desta página</th><th>Prova adicional</th></tr></thead><tbody>
+<tr><td>Guia seguro / hardening / patches</td><td>1 a 4.3</td><td>Aprovação, configuração real e benchmark/scan.</td></tr>
+<tr><td>Contas / interfaces / políticas de senha / senha padrão / proteção de senha</td><td>4.2 e 4.4</td><td>Identidades, acesso, revisões e configuração do produto.</td></tr>
+<tr><td>Sincronização de hora</td><td>4.3</td><td>Estado do host ou responsabilidade gerenciada validada.</td></tr>
+<tr><td>Audit logs / logs transacionais</td><td>4.5</td><td>Entrega, amostra, acesso e retenção.</td></tr>
+<tr><td>Antimalware / FIM</td><td>4.5</td><td>Cobertura, política, saúde e eventos da ferramenta efetiva.</td></tr>
+<tr><td>Armazenamento / backup</td><td>4.4 e 4.5</td><td>Proteção por dado e restauração validada.</td></tr>
+<tr><td>Registry / imagens / deploy</td><td>3, 4.1, 4.2 e 4.5</td><td>Digest → execução → evidência → decisão → runtime.</td></tr>
+<tr><td>Lambda configuração / deploy / logs</td><td>4.6</td><td>Função/alias/hash, autorização da mudança e logs.</td></tr>
+</tbody></table></div>
+<p><strong>Antes de publicar como vigente:</strong> preencher os campos de governança, validar o benchmark e o escopo com os owners, ajustar as regras às exceções autorizadas e obter aprovação registrada. A página publicada deve manter histórico de versões e apontar para evidências corporativas com acesso controlado. Esta proposta não é uma retrospectiva de controles já comprovados na empresa.</p></main></body></html>

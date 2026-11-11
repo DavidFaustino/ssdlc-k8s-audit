@@ -1,0 +1,44 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Permissões e fontes necessárias</title><style>body{margin:0;background:#f3f5f8;color:#172b4d;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+main{max-width:1120px;margin:32px auto;background:white;padding:40px;border-radius:12px;box-shadow:0 2px 10px #172b4d12}
+h1{font-size:30px;line-height:1.2;color:#102a43}h2{font-size:23px;margin-top:38px;border-top:2px solid #dbe5ef;padding-top:20px}h3{font-size:19px;margin-top:26px}
+p,li{max-width:100%}a{color:#0052cc}code{font:14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf2f7;padding:2px 4px;border-radius:3px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102a43;color:#eef5fc;border-radius:7px;padding:18px}pre code{background:none;color:inherit;padding:0}
+.table-wrap{overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;background:#e8f0fb;color:#102a43}th,td{border:1px solid #d9e2ec;padding:10px 12px;vertical-align:top;min-width:100px}tr:nth-child(even){background:#f8fafc}
+blockquote{border-left:4px solid #0052cc;padding:10px 18px;background:#eef5ff;margin:20px 0}footer{font-size:12px;color:#526777;margin-top:36px}
+@media(max-width:700px){main{margin:0;padding:18px;border-radius:0}h1{font-size:25px}th,td{padding:7px}}
+@media print{body{background:white}main{box-shadow:none;margin:0;padding:0;max-width:none}h2,h3{break-after:avoid}tr{break-inside:avoid}a{color:inherit}}
+</style></head><body><main><h1>Permissões e fontes necessárias</h1>
+<p>O operador usa uma sessão já autenticada e autorizada. O kit não cria roles, usuários, políticas ou bindings. A lista abaixo serve para o administrador preparar um acesso de leitura temporário e restrito ao escopo. Permissões AWS e RBAC Kubernetes são autorizações distintas.</p>
+<h2>AWS</h2>
+<p>O exemplo <a href="examples/iam-readonly-policy.json">iam-readonly-policy.json</a> contém somente as ações de leitura da allowlist implementada, sem <code>GetSecretValue</code>, leitura de parâmetros SSM, invocação Lambda, download de código, execução SSM ou alterações de recursos. Há operações de leitura disponíveis na biblioteca que não são usadas em todas as rodadas; o administrador pode remover as que não pertencem aos módulos selecionados.</p>
+<p><code>Resource: &quot;*&quot;</code> no exemplo atende consultas de descoberta que não aceitam resource-level scoping; <strong>não representa a concessão final recomendada para toda a conta</strong>. O administrador deve separar ações e restringir recursos, contas, regiões, condições e duração da sessão quando o serviço permitir. Não anexar o exemplo automaticamente. Permissões de uma sessão resultam também de boundaries, SCPs, resource policies e outras concessões; este arquivo não calcula acesso efetivo.</p>
+<div class="table-wrap"><table><thead><tr><th>Grupo</th><th>Prefixos de leitura</th><th>Objetivo / cuidado</th></tr></thead><tbody>
+<tr><td>Identidade</td><td><code>sts:GetCallerIdentity</code></td><td>Confirmar conta/role. A AWS normalmente não exige permissão específica para esta chamada.</td></tr>
+<tr><td>IAM</td><td>GetAccountPasswordPolicy/GetAccountSummary/ListUsers/ListRoles e leitura das policies de roles</td><td>Não lê senhas; não inclui IdP, todos os acessos locais ou uma simulação completa de permissões.</td></tr>
+<tr><td>EKS</td><td>List/Describe de clusters, nodegroups, Fargate profiles, addons, access entries/policies e pod identities</td><td>Não concede acesso à API Kubernetes nem lê o ConfigMap legado aws-auth.</td></tr>
+<tr><td>EC2/EFS</td><td>Describe de instâncias, AMIs, rede, volumes, snapshots próprios e EFS</td><td>Não faz login no SO.</td></tr>
+<tr><td>ECS</td><td>List/Describe de clusters, serviços, tasks, container instances e task definitions</td><td>Não usa ExecuteCommand nem altera deployments.</td></tr>
+<tr><td>ECR</td><td>Describe/Get de repositórios, imagens, registry scanning, replicação e policies</td><td>Não faz pull das camadas nem consulta todos os relatórios de scan.</td></tr>
+<tr><td>Lambda</td><td>List/Get de configuração disponível, versões, aliases, resource policies, URLs e mappings</td><td>A API de listagem pode devolver Environment em memória; os valores são eliminados antes de persistir. Não chama GetFunction/download nem Invoke.</td></tr>
+<tr><td>Logs/CloudTrail</td><td>Describe/Get de metadados, status, seletores e filtros</td><td>Não lê mensagens de logs ou histórico completo de eventos.</td></tr>
+<tr><td>Backup</td><td>List/Get de planos, seleções, vaults, recovery points e jobs</td><td>Não inicia backup ou restauração.</td></tr>
+<tr><td>SSM</td><td>DescribeInstanceInformation/DescribeInstancePatchStates/ListAssociations</td><td>Não dispara inventário, scan, comando ou patch.</td></tr>
+<tr><td>Segurança</td><td>Leituras de cobertura/configuração Inspector, GuardDuty, Security Hub e Config</td><td>Recurso não habilitado ou região sem suporte pode retornar erro. O kit não ativa nada.</td></tr>
+<tr><td>Secrets Manager/KMS</td><td>ListSecrets/DescribeKey/GetKeyRotationStatus</td><td>Somente metadados; não lê valores de segredos nem descriptografa dados.</td></tr>
+</tbody></table></div>
+<p>Para a lista exata implementada, veja <code>READ_OPERATIONS</code> em <code>auditlib/core.py</code>. O exemplo de política é derivado dessa lista. O prefixo IAM do AWS Config é <code>config</code>, embora o nome do CLI seja <code>configservice</code>.</p>
+<h2>Kubernetes</h2>
+<p>O exemplo <a href="examples/kubernetes-reader.yaml">kubernetes-reader.yaml</a> contém somente regras <code>get/list</code> dos objetos coletados. Não concede leitura a Secrets ou ConfigMaps, subrecursos <code>pods/log</code>, <code>pods/exec</code>, token requests ou recursos arbitrários. Não há binding a usuário/grupo no arquivo. A equipe de plataforma decide como e se essa role deve ser criada e associada a uma identidade existente.</p>
+<p>Consultas cluster-wide podem revelar nomes de recursos/identidades internos. Mesmo com <code>--namespace</code>, o script também consulta objetos de cluster. Se isso ultrapassar o escopo autorizado, ajuste o acesso e a execução com o administrador; não use um contexto privilegiado apenas para eliminar erros do relatório.</p>
+<p>EKS Access Policies e Kubernetes RBAC podem coexistir. A ausência de access entries não significa ausência de usuários: o cluster pode usar autenticação legada. Solicite ao administrador um export sanitizado do <code>aws-auth</code> e o inventário do IdP quando necessários.</p>
+<h2>Fontes fora de AWS/Kubernetes</h2>
+<div class="table-wrap"><table><thead><tr><th>Fonte</th><th>O que solicitar</th><th>Como relacionar</th></tr></thead><tbody>
+<tr><td>Wiz/Falcon/Qualys ou solução efetiva</td><td>Coverage, política/módulo, saúde, último contato e relatório do controle específico</td><td>Instance ID, cluster/node/pod ou digest, escopo e data.</td></tr>
+<tr><td>GitHub Actions / Git</td><td>Revisão, execução de scans/gates, aprovação de mudança e artefatos</td><td>Commit, run ID, receita, digest/hash e decisão.</td></tr>
+<tr><td>Argo CD / Helm</td><td>Release desejada e sincronizada, revisão e workload final</td><td>Aplicação, cluster, namespace, versão e digest em runtime.</td></tr>
+<tr><td>JFrog</td><td>Acesso, configuração do proxy/registry, auditoria, scans e armazenamento dos reports</td><td>Repositório, artefato/digest, policy e data.</td></tr>
+<tr><td>IdP/SSO</td><td>Política de autenticação e revisão de acessos</td><td>Aplicação/role/grupo, dono e data da revisão.</td></tr>
+<tr><td>Backup/restore externo</td><td>Cobertura dos dados e teste de restauração</td><td>Volume/aplicação, RPO/RTO aprovados, resultado e owner.</td></tr>
+<tr><td>Baseline/Confluence</td><td>Guia aprovado, versão, benchmark/perfil e exceções</td><td>Controle, runtime, ambiente e prova de aplicação.</td></tr>
+</tbody></table></div>
+<p>Não colocar tokens de APIs dessas ferramentas neste kit nem em <code>manual-evidence.json</code>. O JSON manual registra referência e descrição, não autenticação ou export de segredo.</p></main></body></html>
